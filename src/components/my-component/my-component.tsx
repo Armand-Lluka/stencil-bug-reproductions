@@ -27,6 +27,11 @@ export class MyComponent {
   }
 
   render() {
-    return <div>Hello, World! I'm {this.getText()}</div>;
+    return <div>
+      Hello, World! I'm {this.getText()}
+      <div class="my-component-child">
+        <p> This is a text el</p>
+      </div>
+      </div>;
   }
 }
