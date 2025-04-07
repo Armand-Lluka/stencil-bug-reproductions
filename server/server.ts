@@ -14,9 +14,11 @@ try {
       const win = createWindowFromHtml(html, Math.random().toString(36).substring(7));
       const document = win.document;
 
+      console.time('renderToString');
       const result = await renderToString(document, {
         serializeShadowRoot: 'scoped',
       });
+      console.timeEnd('renderToString');
 
       res.send(`<!doctype html>${result.html}`);
     } catch (err) {

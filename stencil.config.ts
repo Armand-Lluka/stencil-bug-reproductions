@@ -1,4 +1,5 @@
 import { Config } from '@stencil/core';
+import { sass } from '@stencil/sass';
 
 export const config: Config = {
   namespace: 'stencil-bug-reproduction',
@@ -22,6 +23,9 @@ export const config: Config = {
     {
       type: 'dist-hydrate-script',
     },
+  ],
+  plugins: [
+    sass(),
   ],
   testing: {
     browserHeadless: "shell",
