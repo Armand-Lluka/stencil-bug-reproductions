@@ -129,13 +129,37 @@ const NAMESPACE = 'stencil-bug-reproduction';
 const BUILD = /* stencil-bug-reproduction */ { hydratedSelectorName: "hydrated", slotRelocation: true, updatable: true, watchCallback: false };
 
 /*
- Stencil Hydrate Platform v4.28.2 | MIT Licensed | https://stenciljs.com
+ Stencil Hydrate Platform v4.29.1 | MIT Licensed | https://stenciljs.com
  */
 var __defProp = Object.defineProperty;
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
 };
+var PrimitiveType = /* @__PURE__ */ ((PrimitiveType2) => {
+  PrimitiveType2["Undefined"] = "undefined";
+  PrimitiveType2["Null"] = "null";
+  PrimitiveType2["String"] = "string";
+  PrimitiveType2["Number"] = "number";
+  PrimitiveType2["SpecialNumber"] = "number";
+  PrimitiveType2["Boolean"] = "boolean";
+  PrimitiveType2["BigInt"] = "bigint";
+  return PrimitiveType2;
+})(PrimitiveType || {});
+var NonPrimitiveType = /* @__PURE__ */ ((NonPrimitiveType2) => {
+  NonPrimitiveType2["Array"] = "array";
+  NonPrimitiveType2["Date"] = "date";
+  NonPrimitiveType2["Map"] = "map";
+  NonPrimitiveType2["Object"] = "object";
+  NonPrimitiveType2["RegularExpression"] = "regexp";
+  NonPrimitiveType2["Set"] = "set";
+  NonPrimitiveType2["Channel"] = "channel";
+  NonPrimitiveType2["Symbol"] = "symbol";
+  return NonPrimitiveType2;
+})(NonPrimitiveType || {});
+var TYPE_CONSTANT = "type";
+var VALUE_CONSTANT = "value";
+var SERIALIZED_PREFIX = "serialized:";
 
 // src/utils/es2022-rewire-class-members.ts
 var reWireGetterSetter = (instance, hostRef) => {
@@ -174,6 +198,101 @@ function queryNonceMetaTagContent(doc) {
 // src/utils/regular-expression.ts
 var escapeRegExpSpecialCharacters = (text) => {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
+
+// src/utils/remote-value.ts
+var RemoteValue = class _RemoteValue {
+  /**
+   * Deserializes a LocalValue serialized object back to its original JavaScript representation
+   *
+   * @param serialized The serialized LocalValue object
+   * @returns The original JavaScript value/object
+   */
+  static fromLocalValue(serialized) {
+    const type = serialized[TYPE_CONSTANT];
+    const value = VALUE_CONSTANT in serialized ? serialized[VALUE_CONSTANT] : void 0;
+    switch (type) {
+      case "string" /* String */:
+        return value;
+      case "boolean" /* Boolean */:
+        return value;
+      case "bigint" /* BigInt */:
+        return BigInt(value);
+      case "undefined" /* Undefined */:
+        return void 0;
+      case "null" /* Null */:
+        return null;
+      case "number" /* Number */:
+        if (value === "NaN") return NaN;
+        if (value === "-0") return -0;
+        if (value === "Infinity") return Infinity;
+        if (value === "-Infinity") return -Infinity;
+        return value;
+      case "array" /* Array */:
+        return value.map((item) => _RemoteValue.fromLocalValue(item));
+      case "date" /* Date */:
+        return new Date(value);
+      case "map" /* Map */:
+        const map2 = /* @__PURE__ */ new Map();
+        for (const [key, val] of value) {
+          const deserializedKey = typeof key === "object" && key !== null ? _RemoteValue.fromLocalValue(key) : key;
+          const deserializedValue = _RemoteValue.fromLocalValue(val);
+          map2.set(deserializedKey, deserializedValue);
+        }
+        return map2;
+      case "object" /* Object */:
+        const obj = {};
+        for (const [key, val] of value) {
+          obj[key] = _RemoteValue.fromLocalValue(val);
+        }
+        return obj;
+      case "regexp" /* RegularExpression */:
+        const { pattern, flags } = value;
+        return new RegExp(pattern, flags);
+      case "set" /* Set */:
+        const set = /* @__PURE__ */ new Set();
+        for (const item of value) {
+          set.add(_RemoteValue.fromLocalValue(item));
+        }
+        return set;
+      case "symbol" /* Symbol */:
+        return Symbol(value);
+      default:
+        throw new Error(`Unsupported type: ${type}`);
+    }
+  }
+  /**
+   * Utility method to deserialize multiple LocalValues at once
+   *
+   * @param serializedValues Array of serialized LocalValue objects
+   * @returns Array of deserialized JavaScript values
+   */
+  static fromLocalValueArray(serializedValues) {
+    return serializedValues.map((value) => _RemoteValue.fromLocalValue(value));
+  }
+  /**
+   * Verifies if the given object matches the structure of a serialized LocalValue
+   *
+   * @param obj Object to verify
+   * @returns boolean indicating if the object has LocalValue structure
+   */
+  static isLocalValueObject(obj) {
+    if (typeof obj !== "object" || obj === null) {
+      return false;
+    }
+    if (!obj.hasOwnProperty(TYPE_CONSTANT)) {
+      return false;
+    }
+    const type = obj[TYPE_CONSTANT];
+    const hasTypeProperty = Object.values({ ...PrimitiveType, ...NonPrimitiveType }).includes(type);
+    if (!hasTypeProperty) {
+      return false;
+    }
+    if (type !== "null" /* Null */ && type !== "undefined" /* Undefined */) {
+      return obj.hasOwnProperty(VALUE_CONSTANT);
+    }
+    return true;
+  }
 };
 
 // src/utils/result.ts
@@ -224,6 +343,14 @@ var unwrapErr = (result) => {
     throw result.value;
   }
 };
+
+// src/utils/serialize.ts
+function deserializeProperty(value) {
+  if (typeof value !== "string" || !value.startsWith(SERIALIZED_PREFIX)) {
+    return value;
+  }
+  return RemoteValue.fromLocalValue(JSON.parse(atob(value.slice(SERIALIZED_PREFIX.length))));
+}
 
 // src/runtime/runtime-constants.ts
 var CONTENT_REF_ID = "r";
@@ -468,6 +595,7 @@ var isHost = (node) => node && node.$tag$ === Host;
 
 // src/runtime/client-hydrate.ts
 var initializeClientHydrate = (hostElm, tagName, hostId, hostRef) => {
+  var _a;
   const endHydrate = createTime("hydrateClient", tagName);
   const shadowRoot = hostElm.shadowRoot;
   const childRenderNodes = [];
@@ -476,6 +604,19 @@ var initializeClientHydrate = (hostElm, tagName, hostId, hostRef) => {
   const shadowRootNodes = shadowRoot ? [] : null;
   const vnode = newVNode(tagName, null);
   vnode.$elm$ = hostElm;
+  const members = Object.entries(((_a = hostRef.$cmpMeta$) == null ? void 0 : _a.$members$) || {});
+  members.forEach(([memberName, [memberFlags, metaAttributeName]]) => {
+    var _a2;
+    if (!(memberFlags & 31 /* Prop */)) {
+      return;
+    }
+    const attributeName = metaAttributeName || memberName;
+    const attrVal = hostElm.getAttribute(attributeName);
+    if (attrVal !== null) {
+      const attrPropVal = parsePropertyValue(attrVal, memberFlags);
+      (_a2 = hostRef == null ? void 0 : hostRef.$instanceValues$) == null ? void 0 : _a2.set(memberName, attrPropVal);
+    }
+  });
   if (win.document && (!plt.$orgLocNodes$ || !plt.$orgLocNodes$.size)) {
     initializeDocumentHydrate(win.document.body, plt.$orgLocNodes$ = /* @__PURE__ */ new Map());
   }
@@ -1185,6 +1326,17 @@ var scopeCss = (cssText, scopeId2, commentOriginalSelector) => {
   return cssText;
 };
 var parsePropertyValue = (propValue, propType) => {
+  if (typeof propValue === "string" && (propValue.startsWith("{") && propValue.endsWith("}") || propValue.startsWith("[") && propValue.endsWith("]"))) {
+    try {
+      propValue = JSON.parse(propValue);
+      return propValue;
+    } catch (e) {
+    }
+  }
+  if (typeof propValue === "string" && propValue.startsWith(SERIALIZED_PREFIX)) {
+    propValue = deserializeProperty(propValue);
+    return propValue;
+  }
   if (propValue != null && !isComplexType(propValue)) {
     if (propType & 1 /* String */) {
       return String(propValue);
@@ -1279,7 +1431,7 @@ var attachStyles = (hostRef) => {
   const scopeId2 = addStyle(
     elm.shadowRoot ? elm.shadowRoot : elm.getRootNode(),
     cmpMeta);
-  if ((flags & 10 /* needsScopedEncapsulation */ && flags & 2 /* scopedCssEncapsulation */ || flags & 128 /* shadowNeedsScopedCss */)) {
+  if (flags & 10 /* needsScopedEncapsulation */) {
     elm["s-sc"] = scopeId2;
     elm.classList.add(scopeId2 + "-h");
   }
@@ -1687,7 +1839,8 @@ var renderVdom = (hostRef, renderFnResults, isInitialLoad = false) => {
   const hostElm = hostRef.$hostElement$;
   const cmpMeta = hostRef.$cmpMeta$;
   const oldVNode = hostRef.$vnode$ || newVNode(null, null);
-  const rootVnode = isHost(renderFnResults) ? renderFnResults : h(null, null, renderFnResults);
+  const isHostElement = isHost(renderFnResults);
+  const rootVnode = isHostElement ? renderFnResults : h(null, null, renderFnResults);
   hostTagName = hostElm.tagName;
   if (isInitialLoad && rootVnode.$attrs$) {
     for (const key of Object.keys(rootVnode.$attrs$)) {
@@ -2348,21 +2501,15 @@ function proxyHostElement(elm, cstr) {
       var _a;
       if (memberFlags & 31 /* Prop */) {
         const attributeName = metaAttributeName || memberName;
-        let attrValue = elm.getAttribute(attributeName);
-        if ((attrValue == null ? void 0 : attrValue.startsWith("{")) && attrValue.endsWith("}") || (attrValue == null ? void 0 : attrValue.startsWith("[")) && attrValue.endsWith("]")) {
-          try {
-            attrValue = JSON.parse(attrValue);
-          } catch (e) {
-          }
-        }
-        const { get: origGetter, set: origSetter } = Object.getOwnPropertyDescriptor(cstr.prototype, memberName) || {};
+        const attrValue = elm.getAttribute(attributeName);
+        const propValue = elm[memberName];
         let attrPropVal;
+        const { get: origGetter, set: origSetter } = Object.getOwnPropertyDescriptor(cstr.prototype, memberName) || {};
         if (attrValue != null) {
           attrPropVal = parsePropertyValue(attrValue, memberFlags);
         }
-        const ownValue = elm[memberName];
-        if (ownValue !== void 0) {
-          attrPropVal = ownValue;
+        if (propValue !== void 0) {
+          attrPropVal = propValue;
           delete elm[memberName];
         }
         if (attrPropVal !== void 0) {
@@ -2927,7 +3074,7 @@ var NAMESPACE = (
 );
 
 /*
- Stencil Hydrate Runner v4.28.2 | MIT Licensed | https://stenciljs.com
+ Stencil Hydrate Runner v4.29.1 | MIT Licensed | https://stenciljs.com
  */
 var __defProp = Object.defineProperty;
 var __export = (target, all) => {
@@ -17001,6 +17148,32 @@ var Build = {
   isServer: false,
   isTesting: BUILD.isTesting ? true : false
 };
+
+// src/utils/constants.ts
+var PrimitiveType = /* @__PURE__ */ ((PrimitiveType2) => {
+  PrimitiveType2["Undefined"] = "undefined";
+  PrimitiveType2["Null"] = "null";
+  PrimitiveType2["String"] = "string";
+  PrimitiveType2["Number"] = "number";
+  PrimitiveType2["SpecialNumber"] = "number";
+  PrimitiveType2["Boolean"] = "boolean";
+  PrimitiveType2["BigInt"] = "bigint";
+  return PrimitiveType2;
+})(PrimitiveType || {});
+var NonPrimitiveType = /* @__PURE__ */ ((NonPrimitiveType2) => {
+  NonPrimitiveType2["Array"] = "array";
+  NonPrimitiveType2["Date"] = "date";
+  NonPrimitiveType2["Map"] = "map";
+  NonPrimitiveType2["Object"] = "object";
+  NonPrimitiveType2["RegularExpression"] = "regexp";
+  NonPrimitiveType2["Set"] = "set";
+  NonPrimitiveType2["Channel"] = "channel";
+  NonPrimitiveType2["Symbol"] = "symbol";
+  return NonPrimitiveType2;
+})(NonPrimitiveType || {});
+var TYPE_CONSTANT = "type";
+var VALUE_CONSTANT = "value";
+var SERIALIZED_PREFIX = "serialized:";
 var STENCIL_DEV_MODE = BUILD.isTesting ? ["STENCIL:"] : [
   "%cstencil",
   "color: white;background:#4c47ff;font-weight: bold; font-size:10px; padding:2px 6px; border-radius: 5px"
@@ -17020,6 +17193,232 @@ var supportsConstructableStylesheets = BUILD.constructableCSS ? /* @__PURE__ */ 
 
 // src/utils/helpers.ts
 var isString = (v) => typeof v === "string";
+
+// src/utils/local-value.ts
+var LocalValue = class _LocalValue {
+  constructor(type, value) {
+    if (type === "undefined" /* Undefined */ || type === "null" /* Null */) {
+      this.type = type;
+    } else {
+      this.type = type;
+      this.value = value;
+    }
+  }
+  /**
+   * Creates a new LocalValue object with a string value.
+   *
+   * @param {string} value - The string value to be stored in the LocalValue object.
+   * @returns {LocalValue} - The created LocalValue object.
+   */
+  static createStringValue(value) {
+    return new _LocalValue("string" /* String */, value);
+  }
+  /**
+   * Creates a new LocalValue object with a number value.
+   *
+   * @param {number} value - The number value.
+   * @returns {LocalValue} - The created LocalValue object.
+   */
+  static createNumberValue(value) {
+    return new _LocalValue("number" /* Number */, value);
+  }
+  /**
+   * Creates a new LocalValue object with a special number value.
+   *
+   * @param {number} value - The value of the special number.
+   * @returns {LocalValue} - The created LocalValue object.
+   */
+  static createSpecialNumberValue(value) {
+    if (Number.isNaN(value)) {
+      return new _LocalValue("number" /* SpecialNumber */, "NaN");
+    }
+    if (Object.is(value, -0)) {
+      return new _LocalValue("number" /* SpecialNumber */, "-0");
+    }
+    if (value === Infinity) {
+      return new _LocalValue("number" /* SpecialNumber */, "Infinity");
+    }
+    if (value === -Infinity) {
+      return new _LocalValue("number" /* SpecialNumber */, "-Infinity");
+    }
+    return new _LocalValue("number" /* SpecialNumber */, value);
+  }
+  /**
+   * Creates a new LocalValue object with an undefined value.
+   * @returns {LocalValue} - The created LocalValue object.
+   */
+  static createUndefinedValue() {
+    return new _LocalValue("undefined" /* Undefined */);
+  }
+  /**
+   * Creates a new LocalValue object with a null value.
+   * @returns {LocalValue} - The created LocalValue object.
+   */
+  static createNullValue() {
+    return new _LocalValue("null" /* Null */);
+  }
+  /**
+   * Creates a new LocalValue object with a boolean value.
+   *
+   * @param {boolean} value - The boolean value.
+   * @returns {LocalValue} - The created LocalValue object.
+   */
+  static createBooleanValue(value) {
+    return new _LocalValue("boolean" /* Boolean */, value);
+  }
+  /**
+   * Creates a new LocalValue object with a BigInt value.
+   *
+   * @param {BigInt} value - The BigInt value.
+   * @returns {LocalValue} - The created LocalValue object.
+   */
+  static createBigIntValue(value) {
+    return new _LocalValue("bigint" /* BigInt */, value.toString());
+  }
+  /**
+   * Creates a new LocalValue object with an array.
+   *
+   * @param {Array} value - The array.
+   * @returns {LocalValue} - The created LocalValue object.
+   */
+  static createArrayValue(value) {
+    return new _LocalValue("array" /* Array */, value);
+  }
+  /**
+   * Creates a new LocalValue object with date value.
+   *
+   * @param {string} value - The date.
+   * @returns {LocalValue} - The created LocalValue object.
+   */
+  static createDateValue(value) {
+    return new _LocalValue("date" /* Date */, value);
+  }
+  /**
+   * Creates a new LocalValue object of map value.
+   * @param {Map} map - The map.
+   * @returns {LocalValue} - The created LocalValue object.
+   */
+  static createMapValue(map2) {
+    const value = [];
+    Array.from(map2.entries()).forEach(([key, val]) => {
+      value.push([_LocalValue.getArgument(key), _LocalValue.getArgument(val)]);
+    });
+    return new _LocalValue("map" /* Map */, value);
+  }
+  /**
+   * Creates a new LocalValue object from the passed object.
+   *
+   * @param object the object to create a LocalValue from
+   * @returns {LocalValue} - The created LocalValue object.
+   */
+  static createObjectValue(object) {
+    const value = [];
+    Object.entries(object).forEach(([key, val]) => {
+      value.push([key, _LocalValue.getArgument(val)]);
+    });
+    return new _LocalValue("object" /* Object */, value);
+  }
+  /**
+   * Creates a new LocalValue object of regular expression value.
+   *
+   * @param {string} value - The value of the regular expression.
+   * @returns {LocalValue} - The created LocalValue object.
+   */
+  static createRegularExpressionValue(value) {
+    return new _LocalValue("regexp" /* RegularExpression */, value);
+  }
+  /**
+   * Creates a new LocalValue object with the specified value.
+   * @param {Set} value - The value to be set.
+   * @returns {LocalValue} - The created LocalValue object.
+   */
+  static createSetValue(value) {
+    return new _LocalValue("set" /* Set */, value);
+  }
+  /**
+   * Creates a new LocalValue object with the given channel value
+   *
+   * @param {ChannelValue} value - The channel value.
+   * @returns {LocalValue} - The created LocalValue object.
+   */
+  static createChannelValue(value) {
+    return new _LocalValue("channel" /* Channel */, value);
+  }
+  /**
+   * Creates a new LocalValue object with a Symbol value.
+   *
+   * @param {Symbol} symbol - The Symbol value
+   * @returns {LocalValue} - The created LocalValue object
+   */
+  static createSymbolValue(symbol) {
+    const description = symbol.description || "Symbol()";
+    return new _LocalValue("symbol" /* Symbol */, description);
+  }
+  static getArgument(argument) {
+    const type = typeof argument;
+    switch (type) {
+      case "string" /* String */:
+        return _LocalValue.createStringValue(argument);
+      case "number" /* Number */:
+        if (Number.isNaN(argument) || Object.is(argument, -0) || !Number.isFinite(argument)) {
+          return _LocalValue.createSpecialNumberValue(argument);
+        }
+        return _LocalValue.createNumberValue(argument);
+      case "boolean" /* Boolean */:
+        return _LocalValue.createBooleanValue(argument);
+      case "bigint" /* BigInt */:
+        return _LocalValue.createBigIntValue(argument);
+      case "undefined" /* Undefined */:
+        return _LocalValue.createUndefinedValue();
+      case "symbol" /* Symbol */:
+        return _LocalValue.createSymbolValue(argument);
+      case "object" /* Object */:
+        if (argument === null) {
+          return _LocalValue.createNullValue();
+        }
+        if (argument instanceof Date) {
+          return _LocalValue.createDateValue(argument);
+        }
+        if (argument instanceof Map) {
+          const map2 = [];
+          argument.forEach((value, key) => {
+            const objectKey = typeof key === "string" ? key : _LocalValue.getArgument(key);
+            const objectValue = _LocalValue.getArgument(value);
+            map2.push([objectKey, objectValue]);
+          });
+          return _LocalValue.createMapValue(argument);
+        }
+        if (argument instanceof Set) {
+          const set = [];
+          argument.forEach((value) => {
+            set.push(_LocalValue.getArgument(value));
+          });
+          return _LocalValue.createSetValue(set);
+        }
+        if (argument instanceof Array) {
+          const arr = [];
+          argument.forEach((value) => {
+            arr.push(_LocalValue.getArgument(value));
+          });
+          return _LocalValue.createArrayValue(arr);
+        }
+        if (argument instanceof RegExp) {
+          return _LocalValue.createRegularExpressionValue({
+            pattern: argument.source,
+            flags: argument.flags
+          });
+        }
+        return _LocalValue.createObjectValue(argument);
+    }
+    throw new Error(`Unsupported type: ${type}`);
+  }
+  asMap() {
+    return {
+      [TYPE_CONSTANT]: this.type,
+      ...!(this.type === "null" /* Null */ || this.type === "undefined" /* Undefined */) ? { [VALUE_CONSTANT]: this.value } : {}
+    };
+  }
+};
 
 // src/utils/message-utils.ts
 var catchError = (diagnostics, err2, msg) => {
@@ -17058,6 +17457,101 @@ var shouldIgnoreError = (msg) => {
   return msg === TASK_CANCELED_MSG;
 };
 var TASK_CANCELED_MSG = `task canceled`;
+
+// src/utils/remote-value.ts
+var RemoteValue = class _RemoteValue {
+  /**
+   * Deserializes a LocalValue serialized object back to its original JavaScript representation
+   *
+   * @param serialized The serialized LocalValue object
+   * @returns The original JavaScript value/object
+   */
+  static fromLocalValue(serialized) {
+    const type = serialized[TYPE_CONSTANT];
+    const value = VALUE_CONSTANT in serialized ? serialized[VALUE_CONSTANT] : void 0;
+    switch (type) {
+      case "string" /* String */:
+        return value;
+      case "boolean" /* Boolean */:
+        return value;
+      case "bigint" /* BigInt */:
+        return BigInt(value);
+      case "undefined" /* Undefined */:
+        return void 0;
+      case "null" /* Null */:
+        return null;
+      case "number" /* Number */:
+        if (value === "NaN") return NaN;
+        if (value === "-0") return -0;
+        if (value === "Infinity") return Infinity;
+        if (value === "-Infinity") return -Infinity;
+        return value;
+      case "array" /* Array */:
+        return value.map((item) => _RemoteValue.fromLocalValue(item));
+      case "date" /* Date */:
+        return new Date(value);
+      case "map" /* Map */:
+        const map2 = /* @__PURE__ */ new Map();
+        for (const [key, val] of value) {
+          const deserializedKey = typeof key === "object" && key !== null ? _RemoteValue.fromLocalValue(key) : key;
+          const deserializedValue = _RemoteValue.fromLocalValue(val);
+          map2.set(deserializedKey, deserializedValue);
+        }
+        return map2;
+      case "object" /* Object */:
+        const obj = {};
+        for (const [key, val] of value) {
+          obj[key] = _RemoteValue.fromLocalValue(val);
+        }
+        return obj;
+      case "regexp" /* RegularExpression */:
+        const { pattern, flags } = value;
+        return new RegExp(pattern, flags);
+      case "set" /* Set */:
+        const set = /* @__PURE__ */ new Set();
+        for (const item of value) {
+          set.add(_RemoteValue.fromLocalValue(item));
+        }
+        return set;
+      case "symbol" /* Symbol */:
+        return Symbol(value);
+      default:
+        throw new Error(`Unsupported type: ${type}`);
+    }
+  }
+  /**
+   * Utility method to deserialize multiple LocalValues at once
+   *
+   * @param serializedValues Array of serialized LocalValue objects
+   * @returns Array of deserialized JavaScript values
+   */
+  static fromLocalValueArray(serializedValues) {
+    return serializedValues.map((value) => _RemoteValue.fromLocalValue(value));
+  }
+  /**
+   * Verifies if the given object matches the structure of a serialized LocalValue
+   *
+   * @param obj Object to verify
+   * @returns boolean indicating if the object has LocalValue structure
+   */
+  static isLocalValueObject(obj) {
+    if (typeof obj !== "object" || obj === null) {
+      return false;
+    }
+    if (!obj.hasOwnProperty(TYPE_CONSTANT)) {
+      return false;
+    }
+    const type = obj[TYPE_CONSTANT];
+    const hasTypeProperty = Object.values({ ...PrimitiveType, ...NonPrimitiveType }).includes(type);
+    if (!hasTypeProperty) {
+      return false;
+    }
+    if (type !== "null" /* Null */ && type !== "undefined" /* Undefined */) {
+      return obj.hasOwnProperty(VALUE_CONSTANT);
+    }
+    return true;
+  }
+};
 
 // src/utils/result.ts
 var result_exports = {};
@@ -17107,6 +17601,21 @@ var unwrapErr = (result) => {
     throw result.value;
   }
 };
+
+// src/utils/serialize.ts
+function serializeProperty(value) {
+  if (["string", "boolean", "undefined"].includes(typeof value) || typeof value === "number" && value !== Infinity && value !== -Infinity && !isNaN(value)) {
+    return value;
+  }
+  const arg = LocalValue.getArgument(value);
+  return SERIALIZED_PREFIX + btoa(JSON.stringify(arg));
+}
+function deserializeProperty(value) {
+  if (typeof value !== "string" || !value.startsWith(SERIALIZED_PREFIX)) {
+    return value;
+  }
+  return RemoteValue.fromLocalValue(JSON.parse(atob(value.slice(SERIALIZED_PREFIX.length))));
+}
 
 // src/utils/util.ts
 var lowerPathParam = (fn) => (p) => fn(p.toLowerCase());
@@ -18523,7 +19032,9 @@ function removeScripts(elm) {
 }
 
 exports.createWindowFromHtml = createWindowFromHtml;
+exports.deserializeProperty = deserializeProperty;
 exports.hydrateDocument = hydrateDocument;
 exports.renderToString = renderToString;
 exports.serializeDocumentToString = serializeDocumentToString;
+exports.serializeProperty = serializeProperty;
 exports.streamToString = streamToString;

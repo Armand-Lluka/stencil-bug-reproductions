@@ -3,6 +3,18 @@
 import { Readable } from 'node:stream';
 
 export declare function createWindowFromHtml(templateHtml: string, uniqueId: string): any;
+/**
+ * Serialize a value to a string that can be deserialized later.
+ * @param {unknown} value - The value to serialize.
+ * @returns {string} A string that can be deserialized later.
+ */
+export declare function serializeProperty(value: unknown): string | number | boolean;
+/**
+ * Deserialize a value from a string that was serialized earlier.
+ * @param {string} value - The string to deserialize.
+ * @returns {unknown} The deserialized value.
+ */
+export declare function deserializeProperty(value: string): any;
 export type ResolutionHandler = (elm: HTMLElement) => string | undefined | null;
 export interface HydrateDocumentOptions {
 	/**
