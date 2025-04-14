@@ -1,5 +1,12 @@
 {
   "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@stencil/core/internal": ["node_modules/@stencil/core/internal"],
+      "@stencil/core/internal/*": ["node_modules/@stencil/core/internal/*"],
+      "@stencil/core/mock-doc": ["node_modules/@stencil/core/mock-doc"],
+      "@stencil/core/mock-doc/*": ["node_modules/@stencil/core/mock-doc/*"]
+    },
     "allowSyntheticDefaultImports": true,
     "allowUnreachableCode": false,
     "declaration": false,
@@ -22,5 +29,6 @@
   ],
   "exclude": [
     "node_modules"
-  ]
+  ],
+
 }

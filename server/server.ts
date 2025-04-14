@@ -1,7 +1,7 @@
 import path from "path";
 import express from "express";
 import fs from "fs";
-import { createWindowFromHtml, renderToString } from "../hydrate";
+import { createWindowFromHtml, renderToString, serializeDocumentToString } from "../hydrate";
 
 const app = express();
 

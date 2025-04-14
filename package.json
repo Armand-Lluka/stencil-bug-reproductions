@@ -40,7 +40,7 @@
     "serve": "npx bun ./server/server.ts"
   },
   "devDependencies": {
-    "@stencil/core": "^4.27.1",
+    "@stencil/core": "^4.18.3",
     "@stencil/sass": "^3.2.1",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.13.5",

@@ -26,11 +26,10 @@ export class MyComponent {
   }
 
   render() {
-    return <div>
-      Hello, World! I'm {this.getText()}
+    return (
       <div class="my-component-child">
-        <p> This is a text el</p>
+        <p>Hello, World! I'm {this.getText()} </p>
       </div>
-      </div>;
+    )
   }
 }
